@@ -1,0 +1,201 @@
+/* Estilos generales para el cuerpo de la página */
+body {
+    font-family: 'Arial', sans-serif;
+    background: linear-gradient(135deg, #2c3e50, #34495e); /* Fondo degradado */
+    margin: 0;
+    padding: 20px;
+    color: #ecf0f1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    min-height: 100vh;
+}
+
+/* Estilo para el título principal */
+h1 {
+    font-size: 52px;
+    color: #1abc9c; /* Cambio a color sólido para el título */
+    text-align: center;
+    margin-bottom: 30px;
+    text-transform: uppercase;
+    letter-spacing: 5px;
+    font-weight: bold;
+    text-shadow: 2px 2px 6px rgba(0, 0, 0, 0.4); /* Sombra sutil para dar profundidad */
+    position: relative;
+    animation: slideIn 1s ease-out;
+}
+
+@keyframes slideIn {
+    0% {
+        transform: translateY(-50px);
+        opacity: 0;
+    }
+    100% {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+/* Sección de bloques */
+.block-section {
+    width: 100%;
+    max-width: 1000px;
+    margin-bottom: 40px;
+    padding: 20px; /* Añadir padding para separar los bloques */
+    background-color: rgba(52, 152, 219, 0.1); /* Fondo sutil para las secciones */
+    border-radius: 10px;
+    border: 1px solid rgba(52, 152, 219, 0.3); /* Añadir un borde sutil */
+}
+
+/* Título de cada sección de bloques */
+.block-section h2 {
+    font-size: 34px;
+    color: #16a085;
+    text-align: center;
+    margin-bottom: 20px;
+    text-shadow: 1px 1px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* Estilo para cada bloque */
+.block-item {
+    background-color: #34495e;
+    border-radius: 12px;
+    padding: 25px;
+    margin-bottom: 20px;
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2); /* Sombra más suave y destacada */
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    color: #bdc3c7;
+}
+
+.block-item:hover {
+    transform: translateY(-8px); /* Efecto de hover más suave */
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.4); /* Sombra más intensa al hacer hover */
+}
+
+/* Estilo para los párrafos dentro de los bloques */
+.block-item p {
+    font-size: 16px;
+    margin: 12px 0;
+    line-height: 1.6;
+    color: #ecf0f1;
+}
+
+/* Estilo para los encabezados dentro de los bloques */
+.block-item h4 {
+    color: #ecf0f1;
+    font-size: 18px;
+    margin-top: 20px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+}
+
+/* Estilo para las listas dentro de los bloques */
+.block-item ul {
+    list-style-type: none;
+    padding-left: 0;
+    margin-top: 10px;
+}
+
+/* Estilo para cada elemento de la lista */
+.block-item li {
+    font-size: 14px;
+    margin: 8px 0;
+    color: #bdc3c7;
+    display: flex;
+    align-items: center;
+    padding: 8px 0;
+    transition: background-color 0.2s ease;
+}
+
+.block-item li:hover {
+    background-color: rgba(26, 188, 156, 0.1); /* Fondo sutil al pasar el mouse */
+}
+
+/* Estilo para los enlaces de archivos (sin línea entre ellos) */
+.block-item li .file-link {
+    display: flex;
+    align-items: center;
+    color: #1abc9c;
+    text-decoration: none;
+    font-size: 16px; /* Mayor tamaño de fuente para mejor visibilidad */
+    font-weight: 500;
+    transition: color 0.3s ease;
+    padding: 10px 15px; /* Asegurarse de que el enlace tenga espacio */
+    border-radius: 5px;
+}
+
+.block-item li .file-link:hover {
+    color: #16a085;
+    background-color: rgba(26, 188, 156, 0.2); /* Fondo sutil al hacer hover */
+    text-decoration: underline;
+}
+
+/* Estilos para los íconos de archivo junto a los enlaces */
+.block-item .file-link::before {
+    margin-right: 10px;
+    font-size: 22px; /* Aumento en el tamaño de los íconos */
+}
+
+/* Estilos para los emojis según el tipo de archivo */
+.block-item .file-link[data-file*='.pdf']::before {
+    content: '📄'; /* Emoji de documento */
+}
+
+.block-item .file-link[data-file*='.mpeg']::before,
+.block-item .file-link[data-file*='.wav']::before {
+    content: '🎵'; /* Emoji de audio */
+}
+
+.block-item .file-link[data-file*='.mp4']::before,
+.block-item .file-link[data-file*='.mkv']::before {
+    content: '🎬'; /* Emoji de video */
+}
+
+/* Estilos para los enlaces de Google Drive */
+.block-item a {
+    font-size: 14px;
+    color: #1abc9c;
+    text-decoration: none;
+    font-weight: 500;
+    transition: color 0.3s ease;
+    padding: 10px 15px;
+    border-radius: 5px;
+}
+
+.block-item a:hover {
+    color: #16a085;
+    background-color: rgba(26, 188, 156, 0.1);
+    text-decoration: underline;
+}
+
+/* Media Query para hacerlo responsivo */
+@media (max-width: 768px) {
+    body {
+        padding: 10px;
+    }
+
+    .block-section {
+        padding: 0 15px;
+    }
+
+    .block-item {
+        padding: 18px;
+    }
+
+    .block-item h4 {
+        font-size: 16px;
+    }
+
+    .block-item p {
+        font-size: 14px;
+    }
+
+    .block-item li {
+        font-size: 12px;
+    }
+
+    .block-item li .file-link {
+        font-size: 15px;
+    }
+}
