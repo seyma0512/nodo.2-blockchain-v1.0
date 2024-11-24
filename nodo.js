@@ -7,6 +7,7 @@ const { getDB, connectDB } = require('./db-atlas');
 const { google } = require('googleapis');
 const stream = require('stream');
 const cors = require('cors');
+const axios = require('axios'); // Para hacer peticiones HTTP al Nodo 2
 
 // Inicializar Express
 const app = express();
@@ -208,44 +209,57 @@ app.post('/receive-data', upload.array('file'), async (req, res) => {
             previousHash,
             data: filesData,
         }),
-        node: 'nodo-security-blockchain-3002'
+        node: 'nodo-1-blockchain-3002'
     };
 
-    console.log('Creando bloque:', blockData);
+    console.log('Enviando datos al Nodo 2 para validación...');
+    try {
+        // Enviar los datos al Nodo 1 para validación
+        const response = await axios.post('https://nodo-1-blockchain-v1-0.onrender.com/validate-block', blockData);
 
-    // Guardar el bloque en la base de datos
-    await db.collection(chain).insertOne(blockData);
-
-    // Enviar respuesta al cliente
-    console.log('Bloque subido exitosamente');
-    return res.json({ 
-        success: true, 
-        message: 'Bloque subido exitosamente',
-        node: 'nodo-security-blockchain-3002', 
-        blockData });
+        // Si el Nodo 1 valida el bloque, procedemos con la creación
+        if (response.data.success) {
+            console.log('Bloque validado por Nodo 1');
+            await db.collection(chain).insertOne(blockData);
+            return res.json({ 
+                success: true, 
+                message: 'Bloque subido y validado exitosamente',
+                node: 'nodo-2-blockchain-3002', 
+                blockData 
+            });
+        } else {
+            return res.status(400).json({ 
+                success: false, 
+                message: 'El bloque no fue validado por Nodo 1' 
+            });
+        }
+    } catch (error) {
+        console.error('Error al enviar datos al Nodo 1:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Error al validar el bloque con Nodo 1',
+        });
+    }
 });
 
+// Ruta para obtener los bloques más recientes
 app.get('/get-blocks', async (req, res) => {
     const db = getDB();
-    
-    // Tipos de bloques a obtener
     const blockTypes = ['block_pdf', 'block_pdf_audio', 'block_pdf_video', 'block_pdf_audio_video'];
-    
+
     try {
         const blocks = {};
 
         for (const type of blockTypes) {
-            // Buscar los bloques más recientes por tipo
             const latestBlock = await db.collection(type).find({ node: 'nodo-security-blockchain-3002' })
-                .sort({ height: -1 })  // Ordenar por altura descendente
-                .limit(1)  // Obtener solo el último bloque
+                .sort({ height: -1 })
+                .limit(1)
                 .toArray();
 
             if (latestBlock.length === 0) {
-                // Si no hay bloques con el nodo específico, buscar el siguiente que sí tenga el nodo
                 const fallbackBlock = await db.collection(type).find({ node: { $exists: true } })
-                    .sort({ height: -1 })  // Ordenar por altura descendente
-                    .limit(1)  // Obtener el siguiente bloque
+                    .sort({ height: -1 })
+                    .limit(1)
                     .toArray();
                 blocks[type] = fallbackBlock;
             } else {
@@ -260,18 +274,16 @@ app.get('/get-blocks', async (req, res) => {
     }
 });
 
-// Ruta para ver y desencriptar el archivo desde Google Drive
+// Ruta para ver y desencriptar archivo desde Google Drive
 app.get('/:chain/:name-:fileName', async (req, res) => {
     const { chain, fileName } = req.params;
     const db = getDB();
 
     let collectionsToSearch = [];
 
-    // Si el parámetro 'chain' es 'all', se deben buscar en todas las colecciones
     if (chain === 'all') {
         collectionsToSearch = ['block_pdf', 'block_pdf_audio', 'block_pdf_video', 'block_pdf_audio_video'];
     } else {
-        // Si no es 'all', se busca en la colección especificada
         collectionsToSearch = [chain];
     }
 
@@ -279,40 +291,27 @@ app.get('/:chain/:name-:fileName', async (req, res) => {
         let block;
         let fileData;
 
-        // Buscar en cada colección hasta encontrar el bloque y archivo
         for (const collection of collectionsToSearch) {
             block = await db.collection(collection).findOne({ "data.fileName": fileName });
             if (block) {
-                // Si se encuentra el bloque, buscar el archivo dentro del bloque
                 fileData = block.data.find(file => file.fileName === fileName);
-                if (fileData) {
-                    break;  // Salir del loop si encontramos el archivo
-                }
+                if (fileData) break;
             }
         }
 
-        // Si no se encuentra el archivo en ninguna colección
         if (!fileData) {
             return res.status(404).send('Archivo no encontrado en ninguna de las colecciones');
         }
 
         const driveFileUrl = fileData.filePath;
-
-        // Obtenemos el ID del archivo de Google Drive desde la URL
         const fileId = new URL(driveFileUrl).searchParams.get('id');
         if (!fileId) {
             return res.status(400).send('No se pudo obtener el ID del archivo de Google Drive');
         }
 
-        // Descargamos el archivo encriptado desde Google Drive
-        const response = await drive.files.get(
-            { fileId, alt: 'media' },
-            { responseType: 'arraybuffer' }
-        );
-
+        const response = await drive.files.get({ fileId, alt: 'media' }, { responseType: 'arraybuffer' });
         const encryptedBuffer = Buffer.from(response.data);
 
-        // Configuramos el tipo de contenido dependiendo del tipo de archivo
         let contentType = '';
         if (fileData.fileType === 'application/pdf') {
             contentType = 'application/pdf';
@@ -324,18 +323,15 @@ app.get('/:chain/:name-:fileName', async (req, res) => {
             return res.status(400).send('Tipo de archivo no soportado');
         }
 
-        // Establecemos los encabezados para servir el archivo
         res.setHeader('Content-Type', contentType);
         res.setHeader('Content-Disposition', `inline; filename="${fileName.replace('.enc', '')}"`);
 
-        // Desencriptamos y servimos el archivo
         const decipher = crypto.createDecipheriv(
             'aes-256-cbc',
             Buffer.from(process.env.ENCRYPTION_KEY, 'hex'),
             Buffer.from(process.env.IV, 'hex')
         );
 
-        // Convertimos el buffer desencriptado a un flujo y lo enviamos como respuesta
         const decryptedBuffer = Buffer.concat([decipher.update(encryptedBuffer), decipher.final()]);
         res.send(decryptedBuffer);
     } catch (error) {
@@ -344,11 +340,6 @@ app.get('/:chain/:name-:fileName', async (req, res) => {
     }
 });
 
-// Conectar a la base de datos
-connectDB();
-
-// Iniciar el servidor
 app.listen(PORT, () => {
-    console.log(`Servidor escuchando en http://localhost:${PORT}`);
-    console.log(`Servidor escuchando en http://localhost:${PORT}/index.html`);
+    console.log(`Server running on http://localhost:${PORT}/index.html`);
 });
