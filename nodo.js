@@ -340,6 +340,9 @@ app.get('/:chain/:name-:fileName', async (req, res) => {
     }
 });
 
+// Conectar a la base de datos
+connectDB();
+
 app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}/index.html`);
 });
