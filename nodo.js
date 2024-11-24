@@ -10,7 +10,7 @@ const cors = require('cors');
 
 // Inicializar Express
 const app = express();
-const PORT = 3001;
+const PORT = 3002;
 
 // Usar CORS después de inicializar app
 app.use(cors({
@@ -208,7 +208,7 @@ app.post('/receive-data', upload.array('file'), async (req, res) => {
             previousHash,
             data: filesData,
         }),
-        node: 'nodo-security-blockchain-3001'
+        node: 'nodo-security-blockchain-3002'
     };
 
     console.log('Creando bloque:', blockData);
@@ -221,7 +221,7 @@ app.post('/receive-data', upload.array('file'), async (req, res) => {
     return res.json({ 
         success: true, 
         message: 'Bloque subido exitosamente',
-        node: 'nodo-security-blockchain-3001', 
+        node: 'nodo-security-blockchain-3002', 
         blockData });
 });
 
@@ -236,7 +236,7 @@ app.get('/get-blocks', async (req, res) => {
 
         for (const type of blockTypes) {
             // Buscar los bloques más recientes por tipo
-            const latestBlock = await db.collection(type).find({ node: 'nodo-security-blockchain-3001' })
+            const latestBlock = await db.collection(type).find({ node: 'nodo-security-blockchain-3002' })
                 .sort({ height: -1 })  // Ordenar por altura descendente
                 .limit(1)  // Obtener solo el último bloque
                 .toArray();
