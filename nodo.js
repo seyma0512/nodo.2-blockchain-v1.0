@@ -7,7 +7,7 @@ const { getDB, connectDB } = require('./db-atlas');
 const { google } = require('googleapis');
 const stream = require('stream');
 const cors = require('cors');
-const axios = require('axios'); // Para hacer peticiones HTTP al Nodo 2
+const axios = require('axios');
 
 // Inicializar Express
 const app = express();
@@ -141,63 +141,78 @@ app.post('/receive-data', upload.array('file'), async (req, res) => {
         return res.status(400).json({ success: false, message: 'No se recibieron archivos' });
     }
 
-    const previousHash = await getPreviousHash(chain);
-    const timestamp = new Date().toISOString();
-    const count = await db.collection(chain).countDocuments();
-    const height = count === 0 ? 1 : count + 1;
-
-    // Definir las carpetas en Google Drive según la cadena
-    const googleDriveFolders = {
-        block_pdf: '1dVqtu_HK7GMr4sDeQFan6tNfdz4HFkDJ',
-        block_pdf_audio: '11rIm0wPN95-wLDJMFRjlGbe75ibP8OQO',
-        block_pdf_audio_video: '1yg2QaikYggqXbGSs_EjCT2jBGHJev77s',
-        block_pdf_video: '1baotaYaMSW0pKHSp6jPb2QBsVRhDqnW_',
-    };
-    const parentFolderId = googleDriveFolders[chain];
-    if (!parentFolderId) {
-        console.log('Tipo de cadena inválido');
-        return res.status(400).json({ success: false, message: 'Tipo de cadena inválido' });
-    }
-
-    console.log('Creando subcarpeta en Google Drive...');
-    // Crear subcarpeta en Google Drive
-    const subfolderName = `${name}_${Date.now()}`;
-    const subfolderId = await createSubfolder(subfolderName, parentFolderId);
-    console.log('Subcarpeta creada con ID:', subfolderId);
-
-    // Procesar los archivos subidos
-    const filesData = [];
-    for (const file of req.files) {
-        const uniqueId = Math.floor(Math.random() * 1e15).toString();
-        console.log(`Procesando archivo: ${file.originalname}`);
-
-        const encryptedFileBuffer = encryptFile(file.buffer, uniqueId);
-        const driveFileUrl = await uploadFileToDrive(encryptedFileBuffer, `${uniqueId}.${file.mimetype.split('/')[1]}`, file.mimetype, subfolderId);
-
-        filesData.push({
-            fileName: `${uniqueId}.${file.mimetype.split('/')[1]}`,
-            filePath: driveFileUrl,
-            fileType: file.mimetype,
+    // Enviar datos al otro nodo para validación
+    try {
+        const validationResponse = await axios.post('https://nodo-1-blockchain-v1-0.onrender.com/validate', {
+            name,
+            description,
+            location,
+            incidentType,
+            chain,
+            userId,
+            digitalSignature,
+            files: req.files.map(file => ({
+                fileName: file.originalname,
+                fileType: file.mimetype
+            }))
         });
-    }
 
-    console.log('Datos del archivo subido:', filesData);
+        if (!validationResponse.data.success) {
+            console.log('Validación fallida');
+            return res.status(400).json({
+                success: false,
+                message: 'La validación de datos no fue exitosa en el nodo 1',
+            });
+        }
 
-    // Crear el bloque con toda la información
-    const blockData = {
-        _id: count === 0 ? 1 : count + 1,
-        name,
-        description,
-        location,
-        incidentType,
-        chain,
-        digitalSignature,
-        height,
-        timestamp,
-        previousHash,
-        folderPath: `https://drive.google.com/drive/folders/${subfolderId}`,
-        data: filesData,
-        hash: generateHash({
+        console.log('Validación exitosa, continuando con el procesamiento...');
+
+        // Continuar con la creación del bloque después de la validación
+        const previousHash = await getPreviousHash(chain);
+        const timestamp = new Date().toISOString();
+        const count = await db.collection(chain).countDocuments();
+        const height = count === 0 ? 1 : count + 1;
+
+        // Definir las carpetas en Google Drive según la cadena
+        const googleDriveFolders = {
+            block_pdf: '1dVqtu_HK7GMr4sDeQFan6tNfdz4HFkDJ',
+            block_pdf_audio: '11rIm0wPN95-wLDJMFRjlGbe75ibP8OQO',
+            block_pdf_audio_video: '1yg2QaikYggqXbGSs_EjCT2jBGHJev77s',
+            block_pdf_video: '1baotaYaMSW0pKHSp6jPb2QBsVRhDqnW_',
+        };
+        const parentFolderId = googleDriveFolders[chain];
+        if (!parentFolderId) {
+            console.log('Tipo de cadena inválido');
+            return res.status(400).json({ success: false, message: 'Tipo de cadena inválido' });
+        }
+
+        console.log('Creando subcarpeta en Google Drive...');
+        // Crear subcarpeta en Google Drive
+        const subfolderName = `${name}_${Date.now()}`;
+        const subfolderId = await createSubfolder(subfolderName, parentFolderId);
+        console.log('Subcarpeta creada con ID:', subfolderId);
+
+        // Procesar los archivos subidos
+        const filesData = [];
+        for (const file of req.files) {
+            const uniqueId = Math.floor(Math.random() * 1e15).toString();
+            console.log(`Procesando archivo: ${file.originalname}`);
+
+            const encryptedFileBuffer = encryptFile(file.buffer, uniqueId);
+            const driveFileUrl = await uploadFileToDrive(encryptedFileBuffer, `${uniqueId}.${file.mimetype.split('/')[1]}`, file.mimetype, subfolderId);
+
+            filesData.push({
+                fileName: `${uniqueId}.${file.mimetype.split('/')[1]}`,
+                filePath: driveFileUrl,
+                fileType: file.mimetype,
+            });
+        }
+
+        console.log('Datos del archivo subido:', filesData);
+
+        // Crear el bloque con toda la información
+        const blockData = {
+            _id: count === 0 ? 1 : count + 1,
             name,
             description,
             location,
@@ -207,59 +222,105 @@ app.post('/receive-data', upload.array('file'), async (req, res) => {
             height,
             timestamp,
             previousHash,
+            folderPath: `https://drive.google.com/drive/folders/${subfolderId}`,
             data: filesData,
-        }),
-        node: 'nodo-1-blockchain-3002'
-    };
+            hash: generateHash({
+                name,
+                description,
+                location,
+                incidentType,
+                chain,
+                digitalSignature,
+                height,
+                timestamp,
+                previousHash,
+                data: filesData,
+            }),
+            node: 'nodo-security-blockchain-3002'
+        };
 
-    console.log('Enviando datos al Nodo 2 para validación...');
-    try {
-        // Enviar los datos al Nodo 1 para validación
-        const response = await axios.post('https://nodo-1-blockchain-v1-0.onrender.com/validate-block', blockData);
+        console.log('Creando bloque:', blockData);
 
-        // Si el Nodo 1 valida el bloque, procedemos con la creación
-        if (response.data.success) {
-            console.log('Bloque validado por Nodo 1');
-            await db.collection(chain).insertOne(blockData);
-            return res.json({ 
-                success: true, 
-                message: 'Bloque subido y validado exitosamente',
-                node: 'nodo-2-blockchain-3002', 
-                blockData 
-            });
-        } else {
-            return res.status(400).json({ 
-                success: false, 
-                message: 'El bloque no fue validado por Nodo 1' 
-            });
-        }
+        // Guardar el bloque en la base de datos
+        await db.collection(chain).insertOne(blockData);
+
+        // Enviar respuesta al cliente
+        console.log('Bloque subido exitosamente');
+        return res.json({
+            success: true,
+            message: 'Bloque subido exitosamente',
+            node: 'nodo-security-blockchain-3002',
+            blockData
+        });
     } catch (error) {
-        console.error('Error al enviar datos al Nodo 1:', error);
+        console.error('Error al validar datos o crear el bloque:', error);
         return res.status(500).json({
             success: false,
-            message: 'Error al validar el bloque con Nodo 1',
+            message: 'Error al validar datos o crear el bloque',
         });
     }
 });
 
-// Ruta para obtener los bloques más recientes
+// Ruta para validar los datos recibidos
+app.post('/validate', async (req, res) => {
+    const { name, description, location, incidentType, chain, userId, digitalSignature, files } = req.body;
+
+    // Verificar que los datos esenciales estén presentes
+    if (!name || !description || !location || !incidentType || !chain || !userId || !digitalSignature) {
+        console.log('Faltan datos esenciales o firma digital');
+        return res.status(400).json({
+            success: false,
+            message: 'Faltan datos esenciales o firma digital',
+        });
+    }
+
+    // Verificar que la firma digital esté presente
+    if (!digitalSignature) {
+        console.log('Falta la firma digital');
+        return res.status(400).json({
+            success: false,
+            message: 'Falta la firma digital',
+        });
+    }
+
+    // Verificar que al menos un archivo haya sido enviado (si es necesario)
+    if (!files || files.length === 0) {
+        console.log('No se recibieron archivos');
+        return res.status(400).json({
+            success: false,
+            message: 'No se recibieron archivos',
+        });
+    }
+
+    // Si todo está bien, responder con un mensaje de éxito
+    console.log('Datos validados exitosamente');
+    return res.json({
+        success: true,
+        message: 'Datos y firma digital validados exitosamente',
+    });
+});
+
 app.get('/get-blocks', async (req, res) => {
     const db = getDB();
+    
+    // Tipos de bloques a obtener
     const blockTypes = ['block_pdf', 'block_pdf_audio', 'block_pdf_video', 'block_pdf_audio_video'];
-
+    
     try {
         const blocks = {};
 
         for (const type of blockTypes) {
+            // Buscar los bloques más recientes por tipo
             const latestBlock = await db.collection(type).find({ node: 'nodo-security-blockchain-3002' })
-                .sort({ height: -1 })
-                .limit(1)
+                .sort({ height: -1 })  // Ordenar por altura descendente
+                .limit(1)  // Obtener solo el último bloque
                 .toArray();
 
             if (latestBlock.length === 0) {
+                // Si no hay bloques con el nodo específico, buscar el siguiente que sí tenga el nodo
                 const fallbackBlock = await db.collection(type).find({ node: { $exists: true } })
-                    .sort({ height: -1 })
-                    .limit(1)
+                    .sort({ height: -1 })  // Ordenar por altura descendente
+                    .limit(1)  // Obtener el siguiente bloque
                     .toArray();
                 blocks[type] = fallbackBlock;
             } else {
@@ -274,16 +335,18 @@ app.get('/get-blocks', async (req, res) => {
     }
 });
 
-// Ruta para ver y desencriptar archivo desde Google Drive
+// Ruta para ver y desencriptar el archivo desde Google Drive
 app.get('/:chain/:name-:fileName', async (req, res) => {
     const { chain, fileName } = req.params;
     const db = getDB();
 
     let collectionsToSearch = [];
 
+    // Si el parámetro 'chain' es 'all', se deben buscar en todas las colecciones
     if (chain === 'all') {
         collectionsToSearch = ['block_pdf', 'block_pdf_audio', 'block_pdf_video', 'block_pdf_audio_video'];
     } else {
+        // Si no es 'all', se busca en la colección especificada
         collectionsToSearch = [chain];
     }
 
@@ -291,27 +354,40 @@ app.get('/:chain/:name-:fileName', async (req, res) => {
         let block;
         let fileData;
 
+        // Buscar en cada colección hasta encontrar el bloque y archivo
         for (const collection of collectionsToSearch) {
             block = await db.collection(collection).findOne({ "data.fileName": fileName });
             if (block) {
+                // Si se encuentra el bloque, buscar el archivo dentro del bloque
                 fileData = block.data.find(file => file.fileName === fileName);
-                if (fileData) break;
+                if (fileData) {
+                    break;  // Salir del loop si encontramos el archivo
+                }
             }
         }
 
+        // Si no se encuentra el archivo en ninguna colección
         if (!fileData) {
             return res.status(404).send('Archivo no encontrado en ninguna de las colecciones');
         }
 
         const driveFileUrl = fileData.filePath;
+
+        // Obtenemos el ID del archivo de Google Drive desde la URL
         const fileId = new URL(driveFileUrl).searchParams.get('id');
         if (!fileId) {
             return res.status(400).send('No se pudo obtener el ID del archivo de Google Drive');
         }
 
-        const response = await drive.files.get({ fileId, alt: 'media' }, { responseType: 'arraybuffer' });
+        // Descargamos el archivo encriptado desde Google Drive
+        const response = await drive.files.get(
+            { fileId, alt: 'media' },
+            { responseType: 'arraybuffer' }
+        );
+
         const encryptedBuffer = Buffer.from(response.data);
 
+        // Configuramos el tipo de contenido dependiendo del tipo de archivo
         let contentType = '';
         if (fileData.fileType === 'application/pdf') {
             contentType = 'application/pdf';
@@ -323,15 +399,18 @@ app.get('/:chain/:name-:fileName', async (req, res) => {
             return res.status(400).send('Tipo de archivo no soportado');
         }
 
+        // Establecemos los encabezados para servir el archivo
         res.setHeader('Content-Type', contentType);
         res.setHeader('Content-Disposition', `inline; filename="${fileName.replace('.enc', '')}"`);
 
+        // Desencriptamos y servimos el archivo
         const decipher = crypto.createDecipheriv(
             'aes-256-cbc',
             Buffer.from(process.env.ENCRYPTION_KEY, 'hex'),
             Buffer.from(process.env.IV, 'hex')
         );
 
+        // Convertimos el buffer desencriptado a un flujo y lo enviamos como respuesta
         const decryptedBuffer = Buffer.concat([decipher.update(encryptedBuffer), decipher.final()]);
         res.send(decryptedBuffer);
     } catch (error) {
@@ -343,6 +422,8 @@ app.get('/:chain/:name-:fileName', async (req, res) => {
 // Conectar a la base de datos
 connectDB();
 
+// Iniciar el servidor
 app.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}/index.html`);
+    console.log(`Servidor escuchando en http://localhost:${PORT}`);
+    console.log(`Servidor escuchando en http://localhost:${PORT}/index.html`);
 });
